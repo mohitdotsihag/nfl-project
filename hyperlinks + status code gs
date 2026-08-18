@@ -1,0 +1,195 @@
+const SPREADSHEET_ID = '1L8ehMOHE0k1Z4GlJCKxxDpbOGi1tUQRooLUWRvBG8zs';
+
+
+function doGet() {
+  return HtmlService
+    .createHtmlOutputFromFile('Index')
+    .setTitle('Canned Response Tool');
+}
+
+
+function getResponses() {
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName('Responses');
+
+  if (!sheet) {
+    throw new Error("Could not find a sheet/tab named 'Responses'");
+  }
+
+
+  // Get normal cell values
+  const data = sheet.getDataRange().getValues();
+
+  // Get rich-text information so hyperlinks are preserved
+  const richTextData = sheet.getDataRange().getRichTextValues();
+
+
+  // Remove header row
+  data.shift();
+  richTextData.shift();
+
+
+  const responses = [];
+
+
+  data.forEach((row, index) => {
+
+    /*
+     * Ignore blank/incomplete rows.
+     *
+     * A valid response must have:
+     * Category
+     * Situation
+     * Description
+     * Response
+     */
+
+    if (
+      String(row[0]).trim() === "" ||
+      String(row[1]).trim() === "" ||
+      String(row[2]).trim() === "" ||
+      String(row[3]).trim() === ""
+    ) {
+      return;
+    }
+
+
+    /*
+     * Response cell is column D.
+     * Index 3 = Response.
+     */
+
+    const richTextValue = richTextData[index][3];
+
+
+    /*
+     * Plain-text version of the response.
+     * Used for searching and as the fallback clipboard format.
+     */
+
+    const responseText = String(row[3]);
+
+
+    /*
+     * Create HTML version of the response.
+     * This preserves hyperlinks.
+     */
+
+    let responseHtml = "";
+
+
+    if (richTextValue) {
+
+      const runs = richTextValue.getRuns();
+
+
+      if (runs && runs.length > 0) {
+
+        runs.forEach(run => {
+
+          const text = run.getText();
+
+          const escapedText = escapeHtml(text)
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n")
+            .replace(/\n/g, "<br>");
+
+
+          const linkUrl = run.getLinkUrl();
+
+
+          if (linkUrl) {
+
+            const safeUrl = escapeHtmlAttribute(linkUrl);
+
+            responseHtml +=
+              '<a href="' +
+              safeUrl +
+              '">' +
+              escapedText +
+              '</a>';
+
+          } else {
+
+            responseHtml += escapedText;
+
+          }
+
+        });
+
+      } else {
+
+        responseHtml =
+          escapeHtml(responseText)
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n")
+            .replace(/\n/g, "<br>");
+
+      }
+
+    } else {
+
+      responseHtml =
+        escapeHtml(responseText)
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .replace(/\n/g, "<br>");
+
+    }
+
+
+    responses.push({
+
+      category: String(row[0]).trim(),
+
+      situation: String(row[1]).trim(),
+
+      description: String(row[2]).trim(),
+
+      response: responseText,
+
+      responseHtml: responseHtml,
+
+      status: String(row[4] || "").trim()
+
+    });
+
+  });
+
+
+  return responses;
+}
+
+
+/*
+ * Escape normal HTML text.
+ *
+ * This prevents characters in your Sheet data
+ * from accidentally becoming HTML.
+ */
+
+function escapeHtml(value) {
+
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+}
+
+
+/*
+ * Escape URLs before putting them into href=""
+ */
+
+function escapeHtmlAttribute(value) {
+
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+}
